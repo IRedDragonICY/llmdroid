@@ -85,12 +85,6 @@ class MainActivity : ComponentActivity() {
 
                             composable(CHAT_SCREEN) {
                                 ChatRoute(
-                                    onClose = {
-                                        navController.navigate(START_SCREEN) {
-                                            popUpTo(LOAD_SCREEN) { inclusive = true }
-                                            launchSingleTop = true
-                                        }
-                                    }
                                 )
                             }
                         }

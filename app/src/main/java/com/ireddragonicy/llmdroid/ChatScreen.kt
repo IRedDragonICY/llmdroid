@@ -2,39 +2,17 @@ package com.ireddragonicy.llmdroid
 
 import android.content.Context
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -50,12 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 internal fun ChatRoute(
-    onClose: () -> Unit
 ) {
     val context = LocalContext.current.applicationContext
     val chatViewModel: ChatViewModel = viewModel(factory = ChatViewModel.Companion.getFactory(context))
 
-    // Reset InferenceModel when entering ChatScreen
     LaunchedEffect(Unit) {
         val inferenceModel = InferenceModel.Companion.getInstance(context)
         chatViewModel.resetInferenceModel(inferenceModel)
@@ -77,7 +53,6 @@ internal fun ChatRoute(
         onChangedMessage = { message ->
             chatViewModel.recomputeSizeInTokens(message)
         },
-        onClose = onClose
     )
 }
 
@@ -90,7 +65,6 @@ fun ChatScreen(
     resetTokenCount: () -> Unit,
     onSendMessage: (String) -> Unit,
     onChangedMessage: (String) -> Unit,
-    onClose: () -> Unit
 ) {
     var userMessage by rememberSaveable { mutableStateOf("") }
     val tokens by remainingTokens.collectAsState(initial = -1)
@@ -100,7 +74,6 @@ fun ChatScreen(
             .fillMaxSize(),
         verticalArrangement = Arrangement.Bottom
     ) {
-        // Top bar with close button
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -116,7 +89,6 @@ fun ChatScreen(
                 text = if (tokens >= 0) "$tokens ${stringResource(R.string.tokens_remaining)}" else "",
                 style = MaterialTheme.typography.titleSmall
             )
-            // Wrap the buttons in another Row to keep them together
             Row {
                 IconButton(
                     onClick = {
@@ -128,23 +100,10 @@ fun ChatScreen(
                 ) {
                     Icon(Icons.Default.Refresh, contentDescription = "Clear Chat")
                 }
-
-                IconButton(
-                    onClick = {
-                        InferenceModel.Companion.getInstance(context).close()
-                        uiState.clearMessages()
-                        resetTokenCount()
-                        onClose()
-                    },
-                    enabled = textInputEnabled
-                ) {
-                    Icon(Icons.Default.Close, contentDescription = "Close Chat")
-                }
             }
         }
 
         if (tokens == 0) {
-            // Show warning label that context is full
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

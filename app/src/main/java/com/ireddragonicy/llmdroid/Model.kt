@@ -3,8 +3,6 @@ package com.ireddragonicy.llmdroid
 
 import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
 
-// NB: Make sure the filename is *unique* per model you use!
-// Weight caching is currently based on filename alone.
 enum class Model(
     val path: String,
     val url: String,

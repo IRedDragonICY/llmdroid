@@ -91,6 +91,8 @@ internal fun LoadingRoute(
                 CoroutineScope(Dispatchers.Main).launch {
                     deleteDownloadedFile(context)
                 }
+            } catch (e: ModelException) {
+                errorMessage = e.localizedMessage ?: "Unknown Error"
             } catch (e: Exception) {
                 val error = e.localizedMessage ?: "Unknown Error"
                 errorMessage =
@@ -225,4 +227,3 @@ fun ErrorMessage(
         }
     }
 }
-

@@ -2,9 +2,6 @@ package com.ireddragonicy.llmdroid
 
 import java.util.UUID
 
-/**
- * Used to represent a ChatMessage
- */
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val rawMessage: String = "",

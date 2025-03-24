@@ -26,14 +26,12 @@ class LicenseAcknowledgmentActivity : AppCompatActivity() {
     acknowledgeButton = findViewById(R.id.btnAcknowledge)
     continueButton = findViewById(R.id.btnContinue)
 
-    // Disable "Continue" button initially
     continueButton.isEnabled = false
 
     acknowledgeButton.setOnClickListener {
       val customTabsIntent = CustomTabsIntent.Builder().build()
       customTabsIntent.launchUrl(this, Uri.parse(licenseUrl))
 
-      // Enable "Continue" if user viewed license
       continueButton.isEnabled = true
     }
 
@@ -49,7 +47,5 @@ class LicenseAcknowledgmentActivity : AppCompatActivity() {
 
   override fun onResume() {
     super.onResume()
-    // Enable "Continue" if user viewed license
-    // continueButton.isEnabled = true
   }
 }

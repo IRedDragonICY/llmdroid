@@ -6,41 +6,31 @@ import android.util.Log
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
-import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession.LlmInferenceSessionOptions
 import com.google.mediapipe.tasks.genai.llminference.ProgressListener
 import java.io.File
 import kotlin.math.max
 
-/** The maximum number of tokens the model can process. */
-var MAX_TOKENS = 1024
+const val MAX_TOKENS = 1024
+const val DECODE_TOKEN_OFFSET = 256
 
-/**
- * An offset in tokens that we use to ensure that the model always has the ability to respond when
- * we compute the remaining context length.
- */
-var DECODE_TOKEN_OFFSET = 256
-
-class ModelLoadFailException :
-    Exception("Failed to load model, please try again")
-
-class ModelSessionCreateFailException :
-    Exception("Failed to create model session, please try again")
+open class ModelException(message: String) : Exception(message)
+class ModelLoadFailException(message: String) : ModelException(message)
+class ModelSessionCreateFailException(message: String) : ModelException(message)
 
 class InferenceModel private constructor(context: Context) {
-    private lateinit var llmInference: LlmInference
-    private lateinit var llmInferenceSession: LlmInferenceSession
     private val TAG = InferenceModel::class.qualifiedName
+    private val llmInference: LlmInference
+    private var llmInferenceSession: LlmInferenceSession
 
-    val uiState: UiState
+    val uiState: UiState = model.uiState
 
     init {
         if (!modelExists(context)) {
             throw IllegalArgumentException("Model not found at path: ${model.path}")
         }
 
-        uiState = model.uiState
-        createEngine(context)
-        createSession()
+        llmInference = createEngine(context)
+        llmInferenceSession = createSession(llmInference)
     }
 
     fun close() {
@@ -50,10 +40,10 @@ class InferenceModel private constructor(context: Context) {
 
     fun resetSession() {
         llmInferenceSession.close()
-        createSession()
+        llmInferenceSession = createSession(llmInference)
     }
 
-    private fun createEngine(context: Context) {
+    private fun createEngine(context: Context): LlmInference {
         val inferenceOptions = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelPath(context))
             .setMaxTokens(MAX_TOKENS)
@@ -61,30 +51,29 @@ class InferenceModel private constructor(context: Context) {
             .build()
 
         try {
-            llmInference = LlmInference.createFromOptions(context, inferenceOptions)
+            return LlmInference.createFromOptions(context, inferenceOptions)
         } catch (e: Exception) {
             Log.e(TAG, "Load model error: ${e.message}", e)
-            throw ModelLoadFailException()
+            throw ModelLoadFailException("Failed to load model, please try again")
         }
     }
 
-    private fun createSession() {
-        val sessionOptions =  LlmInferenceSessionOptions.builder()
+    private fun createSession(inference: LlmInference): LlmInferenceSession {
+        val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
             .setTemperature(model.temperature)
             .setTopK(model.topK)
             .setTopP(model.topP)
             .build()
 
         try {
-            llmInferenceSession =
-                LlmInferenceSession.createFromOptions(llmInference, sessionOptions)
+            return LlmInferenceSession.createFromOptions(inference, sessionOptions)
         } catch (e: Exception) {
             Log.e(TAG, "LlmInferenceSession create error: ${e.message}", e)
-            throw ModelSessionCreateFailException()
+            throw ModelSessionCreateFailException("Failed to create model session, please try again")
         }
     }
 
-    fun generateResponseAsync(prompt: String, progressListener: ProgressListener<String>) : ListenableFuture<String> {
+    fun generateResponseAsync(prompt: String, progressListener: ProgressListener<String>): ListenableFuture<String> {
         val formattedPrompt = model.uiState.formatPrompt(prompt)
         llmInferenceSession.addQueryChunk(formattedPrompt)
         return llmInferenceSession.generateResponseAsync(progressListener)
@@ -92,40 +81,32 @@ class InferenceModel private constructor(context: Context) {
 
     fun estimateTokensRemaining(prompt: String): Int {
         val context = uiState.messages.joinToString { it.rawMessage } + prompt
-        if (context.isEmpty()) return -1 // Specia marker if no content has been added
+        if (context.isEmpty()) return -1
 
-        val sizeOfAllMessages = llmInferenceSession.sizeInTokens(context)
-        val approximateControlTokens = uiState.messages.size * 3
-        val remainingTokens = MAX_TOKENS - sizeOfAllMessages - approximateControlTokens -  DECODE_TOKEN_OFFSET
-        // Token size is approximate so, let's not return anything below 0
-        return max(0, remainingTokens)
+        val totalTokens = llmInferenceSession.sizeInTokens(context) + 
+            (uiState.messages.size * 3) + DECODE_TOKEN_OFFSET
+        return max(0, MAX_TOKENS - totalTokens)
     }
 
     companion object {
         var model: Model = Model.GEMMA3_CPU
-        private var instance: InferenceModel? = null
+        @Volatile private var instance: InferenceModel? = null
 
+        @Synchronized
         fun getInstance(context: Context): InferenceModel {
-            return if (instance != null) {
-                instance!!
-            } else {
-                InferenceModel(context).also { instance = it }
-            }
+            return instance ?: InferenceModel(context).also { instance = it }
         }
 
+        @Synchronized
         fun resetInstance(context: Context): InferenceModel {
+            instance?.close()
             return InferenceModel(context).also { instance = it }
         }
 
-        fun modelPathFromUrl(context: Context): String {
-            if (model.url.isNotEmpty()) {
-                val urlFileName = Uri.parse(model.url).lastPathSegment
-                if (!urlFileName.isNullOrEmpty()) {
-                    return File(context.filesDir, urlFileName).absolutePath
-                }
-            }
-
-            return ""
+        fun modelExists(context: Context): Boolean {
+            return File(model.path).exists() || 
+                (model.url.isNotEmpty() && File(context.filesDir, 
+                Uri.parse(model.url).lastPathSegment ?: "").exists())
         }
 
         fun modelPath(context: Context): String {
@@ -134,11 +115,24 @@ class InferenceModel private constructor(context: Context) {
                 return model.path
             }
 
-            return modelPathFromUrl(context)
+            if (model.url.isNotEmpty()) {
+                val fileName = Uri.parse(model.url).lastPathSegment
+                if (!fileName.isNullOrEmpty()) {
+                    return File(context.filesDir, fileName).absolutePath
+                }
+            }
+            
+            return ""
         }
-
-        fun modelExists(context: Context): Boolean {
-            return File(modelPath(context)).exists()
+        
+        fun modelPathFromUrl(context: Context): String {
+            if (model.url.isNotEmpty()) {
+                val fileName = Uri.parse(model.url).lastPathSegment
+                if (!fileName.isNullOrEmpty()) {
+                    return File(context.filesDir, fileName).absolutePath
+                }
+            }
+            return model.path
         }
     }
 }

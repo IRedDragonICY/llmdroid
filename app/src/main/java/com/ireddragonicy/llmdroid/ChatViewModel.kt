@@ -41,14 +41,11 @@ class ChatViewModel(
                 val asyncInference =  inferenceModel.generateResponseAsync(userMessage) { partialResult, done ->
                     _uiState.value.appendMessage(partialResult, done)
                     if (done) {
-                        setInputEnabled(true)  // Re-enable text input
+                        setInputEnabled(true)
                     } else {
-                        // Reduce current token count (estimate only). sizeInTokens() will be used
-                        // when computation is done
                         _tokensRemaining.update { max(0, it - 1) }
                     }
                 }
-                // Once the inference is done, recompute the remaining size in tokens
                 asyncInference.addListener({
                     viewModelScope.launch(Dispatchers.IO) {
                         recomputeSizeInTokens(userMessage)
