@@ -151,8 +151,8 @@ class DeepSeekUiState(
             val thinkingEnd = text.indexOf(THINKING_MARKER_END) + THINKING_MARKER_END.length
 
             // Add text to current "thinking" bubble
-            val prefix = text.substring(0, thinkingEnd);
-            val suffix = text.substring(thinkingEnd);
+            val prefix = text.substring(0, thinkingEnd)
+            val suffix = text.substring(thinkingEnd)
 
             appendToMessage(_currentMessageId, prefix)
 

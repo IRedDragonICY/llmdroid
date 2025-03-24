@@ -38,7 +38,7 @@ class ChatViewModel(
             _uiState.value.createLoadingMessage()
             setInputEnabled(false)
             try {
-                val asyncInference =  inferenceModel.generateResponseAsync(userMessage, { partialResult, done ->
+                val asyncInference =  inferenceModel.generateResponseAsync(userMessage) { partialResult, done ->
                     _uiState.value.appendMessage(partialResult, done)
                     if (done) {
                         setInputEnabled(true)  // Re-enable text input
@@ -47,7 +47,7 @@ class ChatViewModel(
                         // when computation is done
                         _tokensRemaining.update { max(0, it - 1) }
                     }
-                })
+                }
                 // Once the inference is done, recompute the remaining size in tokens
                 asyncInference.addListener({
                     viewModelScope.launch(Dispatchers.IO) {
