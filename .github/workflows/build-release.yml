@@ -1,0 +1,363 @@
+name: Build and Release Android App
+
+env:
+  APP_NAME: llmdroid
+
+on:
+  push:
+    branches: [main, master, develop]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    outputs:
+      commit_hash: ${{ steps.vars.outputs.commit_hash }}
+      date_today: ${{ steps.vars.outputs.date_today }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set environment variables
+        id: vars
+        run: |
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date_today=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+          echo "build_number=$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Run tests
+        run: ./gradlew test --parallel
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  build:
+    name: Build App
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Setup signing
+        id: signing
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$SIGNING_KEYSTORE_B64" ]; then
+            echo "Keystore provided, configuring signing..."
+            mkdir -p $HOME/keystore/
+            echo "$SIGNING_KEYSTORE_B64" | base64 --decode > $HOME/keystore/release-key.jks
+            echo "keystore_path=$HOME/keystore/release-key.jks" >> $GITHUB_OUTPUT
+            echo "signing_configured=true" >> $GITHUB_OUTPUT
+          else
+            echo "No keystore provided, using debug signing..."
+            echo "signing_configured=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build Debug & Release in parallel
+        run: |
+          # Run builds in parallel
+          ./gradlew assembleDebug bundleDebug --parallel &
+          PID1=$!
+          
+          if [ "${{ steps.signing.outputs.signing_configured }}" == "true" ]; then
+            ./gradlew assembleRelease bundleRelease \
+              -Pandroid.injected.signing.store.file=${{ steps.signing.outputs.keystore_path }} \
+              -Pandroid.injected.signing.store.password=${{ secrets.STORE_PASSWORD }} \
+              -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+              -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }} \
+              --parallel &
+          else
+            ./gradlew assembleRelease bundleRelease --parallel &
+          fi
+          PID2=$!
+          
+          wait $PID1 $PID2
+          if [ $? -ne 0 ]; then
+            echo "::error::Build process failed"
+            exit 1
+          fi
+
+      - name: Install AAPT2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aapt
+
+      - name: Scan APKs with VirusTotal and prepare info
+        id: prepare_apks
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          # Create output directory for APK info
+          mkdir -p apk_info
+          
+          # Process each APK and create info files
+          for APK_FILE in $(find app/build/outputs/apk -name "*.apk"); do
+            APK_FILENAME=$(basename "$APK_FILE")
+            APK_SIZE=$(du -h "$APK_FILE" | cut -f1)
+            
+            # Extract architecture information
+            if [[ "$APK_FILENAME" == *"arm64"* ]]; then
+              ARCH="arm64-v8a"
+            elif [[ "$APK_FILENAME" == *"armeabi"* ]]; then
+              ARCH="armeabi-v7a"
+            elif [[ "$APK_FILENAME" == *"x86_64"* ]]; then
+              ARCH="x86_64"
+            elif [[ "$APK_FILENAME" == *"x86"* ]]; then
+              ARCH="x86"
+            else
+              # Use aapt to detect architecture if not in filename
+              ARCH_INFO=$(aapt list -a "$APK_FILE" | grep "native-code" || echo "universal")
+              if [[ "$ARCH_INFO" == *"arm64-v8a"* ]]; then
+                ARCH="arm64-v8a"
+              elif [[ "$ARCH_INFO" == *"armeabi-v7a"* ]]; then
+                ARCH="armeabi-v7a"
+              elif [[ "$ARCH_INFO" == *"x86_64"* ]]; then
+                ARCH="x86_64"
+              elif [[ "$ARCH_INFO" == *"x86"* ]]; then
+                ARCH="x86"
+              else
+                ARCH="universal"
+              fi
+            fi
+            
+            # Calculate SHA256 hash
+            SHA256=$(sha256sum "$APK_FILE" | cut -d' ' -f1)
+            
+            # Determine variant
+            if [[ "$APK_FILE" == *"debug"* ]]; then
+              VARIANT="debug"
+            else
+              VARIANT="release"
+            fi
+            
+            # Scan with VirusTotal if API key is available
+            VT_RESULT="Clean"
+            VT_URL="#"
+            
+            if [ -n "$VIRUSTOTAL_API_KEY" ]; then
+              echo "Scanning $APK_FILENAME with VirusTotal..."
+              VT_RESPONSE=$(curl -s \
+                --url https://www.virustotal.com/api/v3/files \
+                --header "x-apikey: $VIRUSTOTAL_API_KEY" \
+                --form file=@"$APK_FILE")
+              
+              if echo "$VT_RESPONSE" | grep -q "id"; then
+                ANALYSIS_ID=$(echo "$VT_RESPONSE" | jq -r '.data.id')
+                VT_URL="https://www.virustotal.com/gui/file-analysis/$ANALYSIS_ID"
+                
+                # Try to get results (wait longer for large files)
+                sleep 15
+                SCAN_RESPONSE=$(curl -s \
+                  --url "https://www.virustotal.com/api/v3/analyses/$ANALYSIS_ID" \
+                  --header "x-apikey: $VIRUSTOTAL_API_KEY")
+                
+                STATUS=$(echo "$SCAN_RESPONSE" | jq -r '.data.attributes.status' 2>/dev/null || echo "pending")
+                
+                if [ "$STATUS" = "completed" ]; then
+                  MALICIOUS=$(echo "$SCAN_RESPONSE" | jq -r '.data.attributes.stats.malicious' 2>/dev/null || echo "0")
+                  SUSPICIOUS=$(echo "$SCAN_RESPONSE" | jq -r '.data.attributes.stats.suspicious' 2>/dev/null || echo "0")
+                  HARMLESS=$(echo "$SCAN_RESPONSE" | jq -r '.data.attributes.stats.harmless' 2>/dev/null || echo "0")
+                  UNDETECTED=$(echo "$SCAN_RESPONSE" | jq -r '.data.attributes.stats.undetected' 2>/dev/null || echo "0")
+                  TOTAL=$((MALICIOUS + SUSPICIOUS + HARMLESS + UNDETECTED))
+                  
+                  if [ "$MALICIOUS" -gt 0 ]; then
+                    VT_RESULT="⚠️ $MALICIOUS/$TOTAL detected"
+                  elif [ "$SUSPICIOUS" -gt 0 ]; then
+                    VT_RESULT="⚠️ $SUSPICIOUS/$TOTAL suspicious"
+                  else
+                    VT_RESULT="✅ Clean ($TOTAL scanners)"
+                  fi
+                else
+                  VT_RESULT="🔄 Scanning..."
+                fi
+              else
+                VT_RESULT="❌ Scan failed"
+              fi
+            fi
+            
+            # Write APK info to file
+            echo "FILENAME=${APK_FILENAME}" > "apk_info/${APK_FILENAME}.txt"
+            echo "ARCH=${ARCH}" >> "apk_info/${APK_FILENAME}.txt"
+            echo "SIZE=${APK_SIZE}" >> "apk_info/${APK_FILENAME}.txt"
+            echo "SHA256=${SHA256}" >> "apk_info/${APK_FILENAME}.txt"
+            echo "VARIANT=${VARIANT}" >> "apk_info/${APK_FILENAME}.txt"
+            echo "VT_RESULT=${VT_RESULT}" >> "apk_info/${APK_FILENAME}.txt"
+            echo "VT_URL=${VT_URL}" >> "apk_info/${APK_FILENAME}.txt"
+            
+            echo "Processed: $APK_FILENAME ($ARCH, $VARIANT)"
+            echo "VirusTotal: $VT_RESULT"
+          done
+          
+          # List all processed APKs
+          echo "APK_FILES=$(ls apk_info/*.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-outputs
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
+            apk_info/
+          retention-days: 7
+          if-no-files-found: warn
+
+  release:
+    name: Publish Release
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-outputs
+          path: artifacts
+
+      - name: Generate release notes
+        run: |
+          echo "# ${{ env.APP_NAME }} - ${{ needs.test.outputs.date_today }} (${{ needs.test.outputs.commit_hash }})" > release_notes.md
+          echo "" >> release_notes.md
+          echo "![Build Status](https://github.com/${{ github.repository }}/actions/workflows/build-release.yml/badge.svg)" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## 📱 Release Information" >> release_notes.md
+          echo "- **Date**: $(date +'%B %d, %Y')" >> release_notes.md
+          echo "- **Commit**: [${{ needs.test.outputs.commit_hash }}](https://github.com/${{ github.repository }}/commit/${{ needs.test.outputs.commit_hash }})" >> release_notes.md
+          echo "" >> release_notes.md
+          
+          # Create arrays to store APK info
+          declare -a debug_apks
+          declare -a release_apks
+          
+          # Loop through each info file and collect data
+          for INFO_FILE in artifacts/apk_info/*.txt; do
+            unset APK_FILENAME ARCH SIZE SHA256 VARIANT VT_RESULT VT_URL
+            
+            # Read the file line by line
+            while IFS= read -r line; do
+              # Process each line to extract key-value pairs
+              key="${line%%=*}"
+              value="${line#*=}"
+              
+              # Store values in variables
+              case "$key" in
+                FILENAME) APK_FILENAME="$value" ;;
+                ARCH) ARCH="$value" ;;
+                SIZE) SIZE="$value" ;;
+                SHA256) SHA256="$value" ;;
+                VARIANT) VARIANT="$value" ;;
+                VT_RESULT) VT_RESULT="$value" ;;
+                VT_URL) VT_URL="$value" ;;
+              esac
+            done < "$INFO_FILE"
+            
+            # Generate table row
+            APK_LINK="[$APK_FILENAME](https://github.com/${{ github.repository }}/releases/download/v${{ needs.test.outputs.date_today }}-${{ needs.test.outputs.commit_hash }}/$APK_FILENAME)"
+            VT_LINK="[$VT_RESULT]($VT_URL)"
+            SHA256_DISPLAY="${SHA256:0:16}..."
+            
+            ROW="| $APK_LINK | $ARCH | $SIZE | $VT_LINK | $SHA256_DISPLAY |"
+            
+            # Add to appropriate array
+            if [[ "$VARIANT" == "debug" ]]; then
+              debug_apks+=("$ROW")
+            else
+              release_apks+=("$ROW")
+            fi
+          done
+          
+          # Add debug APKs to release notes if they exist
+          if [ ${#debug_apks[@]} -gt 0 ]; then
+            echo "## 🔧 Debug APKs" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "| Filename | Architecture | Size | VirusTotal | SHA-256 |" >> release_notes.md
+            echo "|----------|--------------|------|------------|---------|" >> release_notes.md
+            for row in "${debug_apks[@]}"; do
+              echo "$row" >> release_notes.md
+            done
+            echo "" >> release_notes.md
+          fi
+          
+          # Add release APKs to release notes
+          echo "## 📥 Release APKs" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "| Filename | Architecture | Size | VirusTotal | SHA-256 |" >> release_notes.md
+          echo "|----------|--------------|------|------------|---------|" >> release_notes.md
+          for row in "${release_apks[@]}"; do
+            echo "$row" >> release_notes.md
+          done
+          echo "" >> release_notes.md
+          
+          echo "## 🔄 Recent Changes" >> release_notes.md
+          git log -10 --pretty=format:"- %s (%h)" --abbrev-commit >> release_notes.md
+          echo "" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## 📋 Installation Instructions" >> release_notes.md
+          echo "1. Download the APK appropriate for your device architecture" >> release_notes.md
+          echo "2. Enable \"Install from Unknown Sources\" in your device settings" >> release_notes.md
+          echo "3. Install the application" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "## 📞 Support" >> release_notes.md
+          echo "If you encounter any issues, please [open an issue](https://github.com/${{ github.repository }}/issues/new) on GitHub." >> release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.APP_NAME }} - ${{ needs.test.outputs.date_today }} (${{ needs.test.outputs.commit_hash }})
+          tag_name: v${{ needs.test.outputs.date_today }}-${{ needs.test.outputs.commit_hash }}
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          body_path: release_notes.md
+          files: |
+            artifacts/**/*.apk
+            artifacts/**/*.aab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
