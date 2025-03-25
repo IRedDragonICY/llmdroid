@@ -1,5 +1,6 @@
-package com.ireddragonicy.llmdroid
+package com.ireddragonicy.llmdroid.data
 
+import com.ireddragonicy.llmdroid.InferenceModel
 import java.util.UUID
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -9,7 +10,7 @@ data class ChatSession(
     val title: String = "New Chat",
     val createdAt: LocalDateTime = LocalDateTime.now(),
     val messages: List<ChatMessage> = emptyList(),
-    val modelType: Model = InferenceModel.model
+    val modelType: LlmModelConfig = InferenceModel.Companion.model
 ) {
     fun getFormattedDate(): String {
         val formatter = DateTimeFormatter.ofPattern("MMM dd, yyyy")

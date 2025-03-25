@@ -21,7 +21,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -29,7 +28,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.mediapipe.examples.llminference.ui.theme.LLMInferenceTheme
-import kotlinx.coroutines.flow.collectLatest
+import com.ireddragonicy.llmdroid.data.ChatRepository
+import com.ireddragonicy.llmdroid.data.ChatSession
+import com.ireddragonicy.llmdroid.data.LlmModelConfig
 import kotlinx.coroutines.launch
 
 const val START_SCREEN = "start_screen"
@@ -47,7 +48,7 @@ class MainActivity : ComponentActivity() {
                 val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
                 val scope = rememberCoroutineScope()
                 
-                var selectedModel by remember { mutableStateOf<Model?>(null) }
+                var selectedModel by remember { mutableStateOf<LlmModelConfig?>(null) }
                 var searchQuery by remember { mutableStateOf("") }
                 
                 val chatRepository = ChatRepository.getInstance()
@@ -249,8 +250,8 @@ fun ChatSessionItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ModernAppBar(
-    selectedModel: Model?,
-    onModelSelected: (Model) -> Unit,
+    selectedModel: LlmModelConfig?,
+    onModelSelected: (LlmModelConfig) -> Unit,
     onMenuClick: () -> Unit = {},
     showMenu: Boolean = false
 ) {
@@ -298,7 +299,7 @@ fun ModernAppBar(
                         onDismissRequest = { expanded = false },
                         modifier = Modifier.width(200.dp)
                     ) {
-                        Model.entries.forEach { model ->
+                        LlmModelConfig.entries.forEach { model ->
                             DropdownMenuItem(
                                 text = { Text(model.toString()) },
                                 onClick = {

@@ -1,5 +1,6 @@
-package com.ireddragonicy.llmdroid
+package com.ireddragonicy.llmdroid.data
 
+import com.ireddragonicy.llmdroid.InferenceModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +15,7 @@ class ChatRepository private constructor() {
         return _chatSessions.value.find { it.id == chatId }
     }
 
-    fun createChatSession(model: Model = InferenceModel.model): ChatSession {
+    fun createChatSession(model: LlmModelConfig = InferenceModel.Companion.model): ChatSession {
         val newSession = ChatSession(modelType = model)
         _chatSessions.update { listOf(newSession) + it }
         return newSession

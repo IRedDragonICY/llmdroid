@@ -11,6 +11,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.ireddragonicy.llmdroid.data.LlmModelConfig
+import com.ireddragonicy.llmdroid.data.SecureStorage
 import kotlinx.coroutines.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -103,7 +105,7 @@ internal fun LoadingRoute(
 
 private fun downloadModel(
     context: Context,
-    model: Model,
+    model: LlmModelConfig,
     client: OkHttpClient,
     onProgressUpdate: (Int) -> Unit
 ) {

@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Base64
 import android.widget.ImageButton
 import androidx.appcompat.app.AppCompatActivity
+import com.ireddragonicy.llmdroid.data.SecureStorage
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationService
 import net.openid.appauth.ResponseTypeValues
@@ -24,16 +25,14 @@ class LoginActivity : AppCompatActivity() {
 
     val loginButton: ImageButton = findViewById(R.id.btnLogin)
     loginButton.setOnClickListener {
-      loginWithHuggingFace() // Start OAuth login when button is clicked
+      loginWithHuggingFace()
     }
   }
 
   private fun loginWithHuggingFace() {
-    // Generate PKCE parameters
     codeVerifier = generateCodeVerifier()
     codeChallenge = generateCodeChallenge(codeVerifier)
 
-    // Save the code verifier securely for later use in token exchange
     SecureStorage.saveCodeVerifier(applicationContext, codeVerifier)
 
     val authRequest = AuthorizationRequest.Builder(
@@ -41,12 +40,12 @@ class LoginActivity : AppCompatActivity() {
       AuthConfig.clientId,
       ResponseTypeValues.CODE,
       Uri.parse(AuthConfig.redirectUri)
-    ).setScope("read-repos") // Adjust scopes if needed
-      .setCodeVerifier(codeVerifier, codeChallenge, "S256") // Include PKCE
+    ).setScope("read-repos")
+      .setCodeVerifier(codeVerifier, codeChallenge, "S256")
       .build()
 
     val authIntent = authService.getAuthorizationRequestIntent(authRequest)
-    startActivity(authIntent) // Launch OAuth login page
+    startActivity(authIntent)
   }
 
   private fun generateCodeVerifier(): String {

@@ -1,5 +1,6 @@
-package com.ireddragonicy.llmdroid
+package com.ireddragonicy.llmdroid.data
 
+import com.ireddragonicy.llmdroid.USER_PREFIX
 import java.util.UUID
 
 data class ChatMessage(

@@ -1,14 +1,16 @@
-package com.ireddragonicy.llmdroid
+package com.ireddragonicy.llmdroid.data
 
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.ireddragonicy.llmdroid.DeepSeekUiState
+import com.ireddragonicy.llmdroid.GenericUiState
+import com.ireddragonicy.llmdroid.UiState
 
-import com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend
-
-enum class Model(
+enum class LlmModelConfig(
     val path: String,
     val url: String,
     val licenseUrl: String,
     val needsAuth: Boolean,
-    val preferredBackend: Backend?,
+    val preferredBackend: LlmInference.Backend?,
     val uiState: UiState,
     val temperature: Float,
     val topK: Int,
@@ -19,7 +21,7 @@ enum class Model(
         url = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task",
         licenseUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
         needsAuth = true,
-        preferredBackend = Backend.CPU,
+        preferredBackend = LlmInference.Backend.CPU,
         uiState = GenericUiState(),
         temperature = 1f,
         topK = 64,
@@ -30,7 +32,7 @@ enum class Model(
         url = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task",
         licenseUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT",
         needsAuth = true,
-        preferredBackend = Backend.GPU,
+        preferredBackend = LlmInference.Backend.GPU,
         uiState = GenericUiState(),
         temperature = 1f,
         topK = 64,

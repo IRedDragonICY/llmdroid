@@ -1,6 +1,7 @@
 package com.ireddragonicy.llmdroid
 
 import androidx.compose.runtime.toMutableStateList
+import com.ireddragonicy.llmdroid.data.ChatMessage
 
 const val USER_PREFIX = "user"
 const val MODEL_PREFIX = "model"

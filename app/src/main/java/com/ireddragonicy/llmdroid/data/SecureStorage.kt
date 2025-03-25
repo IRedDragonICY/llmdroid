@@ -1,4 +1,4 @@
-package com.ireddragonicy.llmdroid
+package com.ireddragonicy.llmdroid.data
 
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences

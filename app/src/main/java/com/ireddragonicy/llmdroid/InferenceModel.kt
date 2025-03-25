@@ -8,6 +8,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.google.mediapipe.tasks.genai.llminference.ProgressListener
+import com.ireddragonicy.llmdroid.data.LlmModelConfig
 import java.io.File
 import kotlin.math.max
 
@@ -90,12 +91,9 @@ class InferenceModel private constructor(context: Context) {
     }
 
     companion object {
-        var model: Model = Model.GEMMA3_CPU
+        var model: LlmModelConfig = LlmModelConfig.GEMMA3_CPU
 
         @Volatile private var instance: InferenceModel? = null
-
-        val instanceOrNull: InferenceModel?
-            get() = instance
 
         @Synchronized
         fun getInstance(context: Context): InferenceModel {
