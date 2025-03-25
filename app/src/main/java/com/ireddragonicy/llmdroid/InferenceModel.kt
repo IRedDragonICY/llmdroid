@@ -1,3 +1,4 @@
+// filepath: d:\Project\llmdroid\app\src\main\java\com\ireddragonicy\llmdroid\InferenceModel.kt
 package com.ireddragonicy.llmdroid
 
 import android.content.Context
@@ -83,14 +84,18 @@ class InferenceModel private constructor(context: Context) {
         val context = uiState.messages.joinToString { it.rawMessage } + prompt
         if (context.isEmpty()) return -1
 
-        val totalTokens = llmInferenceSession.sizeInTokens(context) + 
+        val totalTokens = llmInferenceSession.sizeInTokens(context) +
             (uiState.messages.size * 3) + DECODE_TOKEN_OFFSET
         return max(0, MAX_TOKENS - totalTokens)
     }
 
     companion object {
         var model: Model = Model.GEMMA3_CPU
+
         @Volatile private var instance: InferenceModel? = null
+
+        val instanceOrNull: InferenceModel?
+            get() = instance
 
         @Synchronized
         fun getInstance(context: Context): InferenceModel {
@@ -104,8 +109,8 @@ class InferenceModel private constructor(context: Context) {
         }
 
         fun modelExists(context: Context): Boolean {
-            return File(model.path).exists() || 
-                (model.url.isNotEmpty() && File(context.filesDir, 
+            return File(model.path).exists() ||
+                (model.url.isNotEmpty() && File(context.filesDir,
                 Uri.parse(model.url).lastPathSegment ?: "").exists())
         }
 
@@ -121,10 +126,10 @@ class InferenceModel private constructor(context: Context) {
                     return File(context.filesDir, fileName).absolutePath
                 }
             }
-            
+
             return ""
         }
-        
+
         fun modelPathFromUrl(context: Context): String {
             if (model.url.isNotEmpty()) {
                 val fileName = Uri.parse(model.url).lastPathSegment

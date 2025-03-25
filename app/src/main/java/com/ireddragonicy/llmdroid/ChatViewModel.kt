@@ -15,11 +15,59 @@ import kotlinx.coroutines.launch
 import kotlin.math.max
 
 class ChatViewModel(
-    private var inferenceModel: InferenceModel
+    private var inferenceModel: InferenceModel,
+    private val chatId: String = ""
 ) : ViewModel() {
+    private val chatRepository = ChatRepository.getInstance()
+    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
 
-    private val _uiState: MutableStateFlow<UiState> = MutableStateFlow(inferenceModel.uiState)
-    val uiState: StateFlow<UiState> =_uiState.asStateFlow()
+    private val _uiState: MutableStateFlow<UiState> = MutableStateFlow(object : UiState {
+        override val messages: List<ChatMessage>
+            get() = _messages.value.asReversed()
+
+        override fun createLoadingMessage() {
+            val chatMessage = ChatMessage(author = MODEL_PREFIX, isLoading = true)
+            _messages.update { it + chatMessage }
+            _currentMessageId = chatMessage.id
+            chatRepository.updateChatMessages(chatId, _messages.value)
+        }
+
+        override fun appendMessage(text: String, done: Boolean) {
+            val index = _messages.value.indexOfFirst { it.id == _currentMessageId }
+            if (index != -1) {
+                _messages.update { messages ->
+                    messages.toMutableList().apply {
+                        val currentMsg = this[index]
+                        val newText = currentMsg.rawMessage + text
+                        this[index] = currentMsg.copy(rawMessage = newText, isLoading = false)
+                    }
+                }
+                chatRepository.updateChatMessages(chatId, _messages.value)
+            }
+        }
+
+        override fun addMessage(text: String, author: String) {
+            val chatMessage = ChatMessage(
+                rawMessage = text,
+                author = author
+            )
+            _messages.update { it + chatMessage }
+            _currentMessageId = chatMessage.id
+            chatRepository.updateChatMessages(chatId, _messages.value)
+        }
+
+        override fun clearMessages() {
+            _messages.value = emptyList()
+            chatRepository.updateChatMessages(chatId, emptyList())
+        }
+
+        override fun formatPrompt(text: String): String {
+            return inferenceModel.uiState.formatPrompt(text)
+        }
+
+        private var _currentMessageId = ""
+    })
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _tokensRemaining = MutableStateFlow(-1)
     val tokensRemaining: StateFlow<Int> = _tokensRemaining.asStateFlow()
@@ -27,9 +75,19 @@ class ChatViewModel(
     private val _textInputEnabled: MutableStateFlow<Boolean> = MutableStateFlow(true)
     val isTextInputEnabled: StateFlow<Boolean> = _textInputEnabled.asStateFlow()
 
+    init {
+        loadChatMessages()
+    }
+
+    private fun loadChatMessages() {
+        val session = chatRepository.getChatSession(chatId)
+        if (session != null) {
+            _messages.value = session.messages
+        }
+    }
+
     fun resetInferenceModel(newModel: InferenceModel) {
         inferenceModel = newModel
-        _uiState.value = inferenceModel.uiState
     }
 
     fun sendMessage(userMessage: String) {
@@ -68,10 +126,10 @@ class ChatViewModel(
     }
 
     companion object {
-        fun getFactory(context: Context) = object : ViewModelProvider.Factory {
+        fun getFactory(context: Context, chatId: String = "") = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
                 val inferenceModel = InferenceModel.Companion.getInstance(context)
-                return ChatViewModel(inferenceModel) as T
+                return ChatViewModel(inferenceModel, chatId) as T
             }
         }
     }

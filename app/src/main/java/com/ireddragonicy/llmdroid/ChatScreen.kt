@@ -1,3 +1,4 @@
+// filepath: d:\Project\llmdroid\app\src\main\java\com\ireddragonicy\llmdroid\ChatScreen.kt
 package com.ireddragonicy.llmdroid
 
 import android.content.Context
@@ -25,12 +26,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun ChatRoute(
+    chatId: String = ""
 ) {
     val context = LocalContext.current.applicationContext
-    val chatViewModel: ChatViewModel = viewModel(factory = ChatViewModel.Companion.getFactory(context))
+    val chatViewModel: ChatViewModel = viewModel(
+        factory = ChatViewModel.Companion.getFactory(context, chatId),
+        key = chatId
+    )
 
     LaunchedEffect(Unit) {
         val inferenceModel = InferenceModel.Companion.getInstance(context)
@@ -68,7 +76,9 @@ fun ChatScreen(
 ) {
     var userMessage by rememberSaveable { mutableStateOf("") }
     val tokens by remainingTokens.collectAsState(initial = -1)
-
+    val coroutineScope = rememberCoroutineScope()
+    var debounceJob: Job? = remember { null }
+    
     Column(
         modifier = Modifier
             .fillMaxSize(),
@@ -147,10 +157,14 @@ fun ChatScreen(
 
             TextField(
                 value = userMessage,
-                onValueChange = { userMessage = it
-                    // Only recompute on first word or when we get a new word
-                    if (!userMessage.contains(" ") || userMessage.trim() != userMessage)  {
-                        onChangedMessage(userMessage)
+                onValueChange = { newMessage ->
+                    userMessage = newMessage
+                    
+                    // Debounce token estimation to avoid calling it too frequently
+                    debounceJob?.cancel()
+                    debounceJob = coroutineScope.launch {
+                        delay(300) // Wait 300ms before estimating tokens
+                        onChangedMessage(newMessage)
                     }
                 },
                 keyboardOptions = KeyboardOptions(
@@ -181,7 +195,7 @@ fun ChatScreen(
                     .align(Alignment.CenterVertically)
                     .fillMaxWidth()
                     .weight(0.15f),
-                enabled = textInputEnabled && tokens > 0
+                enabled = textInputEnabled && tokens != 0 // Changed to only disable when tokens are explicitly 0
             ) {
                 Icon(
                     Icons.AutoMirrored.Default.Send,

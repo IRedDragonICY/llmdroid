@@ -83,10 +83,7 @@ internal fun LoadingRoute(
                 errorMessage = e.localizedMessage ?: "Unknown Error"
             } catch (e: UnauthorizedAccessException) {
                 errorMessage = e.localizedMessage ?: "Unknown Error"
-            } catch (e: ModelSessionCreateFailException) {
-                errorMessage = e.localizedMessage ?: "Unknown Error"
-            } catch (e: ModelLoadFailException) {
-                errorMessage = e.localizedMessage ?: "Unknown Error"
+
                 // Remove invalid model file
                 CoroutineScope(Dispatchers.Main).launch {
                     deleteDownloadedFile(context)
