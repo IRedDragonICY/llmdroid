@@ -1,4 +1,3 @@
-// filepath: d:\Project\llmdroid\app\src\main\java\com\ireddragonicy\llmdroid\ChatScreen.kt
 package com.ireddragonicy.llmdroid
 
 import android.content.Context
@@ -26,9 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ireddragonicy.llmdroid.data.ChatMessage
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,7 +78,7 @@ fun ChatScreen(
     val tokens by remainingTokens.collectAsState(initial = -1)
     val coroutineScope = rememberCoroutineScope()
     var debounceJob: Job? = remember { null }
-    
+
     Column(
         modifier = Modifier
             .fillMaxSize(),
@@ -160,7 +159,7 @@ fun ChatScreen(
                 value = userMessage,
                 onValueChange = { newMessage ->
                     userMessage = newMessage
-                    
+
                     // Debounce token estimation to avoid calling it too frequently
                     debounceJob?.cancel()
                     debounceJob = coroutineScope.launch {

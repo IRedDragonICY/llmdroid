@@ -34,7 +34,7 @@ class GenericUiState(
         _messages.add(chatMessage)
         _currentMessageId= chatMessage.id
     }
-    
+
     override fun appendMessage(text: String, done: Boolean){
         val index = _messages.indexOfFirst { it.id == _currentMessageId }
         if (index != -1) {
@@ -65,7 +65,7 @@ class GenericUiState(
 class DeepSeekUiState(
     messages: List<ChatMessage> = emptyList()
 ) : UiState {
-    private var START_TOKEN = "<｜begin▁of▁sentence｜>"
+    private var START_TOKEN = "<｜begin of sentence｜>"
     private var PROMPT_PREFIX = "<｜User｜>"
     private var PROMPT_SUFFIX = "<｜Assistant｜>"
     private var THINKING_MARKER_START = "<think>"
@@ -142,6 +142,6 @@ class DeepSeekUiState(
     }
 
     override fun formatPrompt(text: String): String {
-       return "$START_TOKEN$PROMPT_PREFIX$text$PROMPT_SUFFIX"
+        return "$START_TOKEN$PROMPT_PREFIX$text$PROMPT_SUFFIX"
     }
 }

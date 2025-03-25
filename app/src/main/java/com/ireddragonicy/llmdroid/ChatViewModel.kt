@@ -18,57 +18,12 @@ import kotlin.math.max
 
 class ChatViewModel(
     private var inferenceModel: InferenceModel,
+    private val chatRepository: ChatRepository,
     private val chatId: String = ""
 ) : ViewModel() {
-    private val chatRepository = ChatRepository.getInstance()
-    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    private val TAG = "ChatViewModel"
 
-    private val _uiState: MutableStateFlow<UiState> = MutableStateFlow(object : UiState {
-        override val messages: List<ChatMessage>
-            get() = _messages.value.asReversed()
-
-        override fun createLoadingMessage() {
-            val chatMessage = ChatMessage(author = MODEL_PREFIX, isLoading = true)
-            _messages.update { it + chatMessage }
-            _currentMessageId = chatMessage.id
-            chatRepository.updateChatMessages(chatId, _messages.value)
-        }
-
-        override fun appendMessage(text: String, done: Boolean) {
-            val index = _messages.value.indexOfFirst { it.id == _currentMessageId }
-            if (index != -1) {
-                _messages.update { messages ->
-                    messages.toMutableList().apply {
-                        val currentMsg = this[index]
-                        val newText = currentMsg.rawMessage + text
-                        this[index] = currentMsg.copy(rawMessage = newText, isLoading = false)
-                    }
-                }
-                chatRepository.updateChatMessages(chatId, _messages.value)
-            }
-        }
-
-        override fun addMessage(text: String, author: String) {
-            val chatMessage = ChatMessage(
-                rawMessage = text,
-                author = author
-            )
-            _messages.update { it + chatMessage }
-            _currentMessageId = chatMessage.id
-            chatRepository.updateChatMessages(chatId, _messages.value)
-        }
-
-        override fun clearMessages() {
-            _messages.value = emptyList()
-            chatRepository.updateChatMessages(chatId, emptyList())
-        }
-
-        override fun formatPrompt(text: String): String {
-            return inferenceModel.uiState.formatPrompt(text)
-        }
-
-        private var _currentMessageId = ""
-    })
+    private val _uiState = MutableStateFlow<UiState>(GenericUiState()) // Use GenericUiState here
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _tokensRemaining = MutableStateFlow(-1)
@@ -82,9 +37,17 @@ class ChatViewModel(
     }
 
     private fun loadChatMessages() {
-        val session = chatRepository.getChatSession(chatId)
-        if (session != null) {
-            _messages.value = session.messages
+        viewModelScope.launch {
+            val session = chatRepository.getChatSession(chatId)
+            if (session != null) {
+                _uiState.update { currentState -> // Update uiState correctly
+                    currentState.clearMessages() // Clear existing messages
+                    session.messages.forEach { message ->
+                        currentState.addMessage(message.rawMessage, message.author) // Add loaded messages
+                    }
+                    currentState // Return the updated state
+                }
+            }
         }
     }
 
@@ -99,7 +62,10 @@ class ChatViewModel(
             setInputEnabled(false)
             try {
                 val asyncInference =  inferenceModel.generateResponseAsync(userMessage) { partialResult, done ->
-                    _uiState.value.appendMessage(partialResult, done)
+                    _uiState.update { currentState -> // Update uiState within sendMessage
+                        currentState.appendMessage(partialResult, done)
+                        currentState // Return the updated state
+                    }
                     if (done) {
                         setInputEnabled(true)
                     } else {
@@ -112,7 +78,10 @@ class ChatViewModel(
                     }
                 }, Dispatchers.Main.asExecutor())
             } catch (e: Exception) {
-                _uiState.value.addMessage(e.localizedMessage ?: "Unknown Error", MODEL_PREFIX)
+                _uiState.update { currentState -> // Update uiState on error
+                    currentState.addMessage(e.localizedMessage ?: "Unknown Error", MODEL_PREFIX)
+                    currentState // Return the updated state
+                }
                 setInputEnabled(true)
             }
         }
@@ -131,7 +100,8 @@ class ChatViewModel(
         fun getFactory(context: Context, chatId: String = "") = object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
                 val inferenceModel = InferenceModel.Companion.getInstance(context)
-                return ChatViewModel(inferenceModel, chatId) as T
+                val repository = ChatRepository.getInstance(context)
+                return ChatViewModel(inferenceModel, repository, chatId) as T
             }
         }
     }

@@ -47,23 +47,22 @@ class MainActivity : ComponentActivity() {
                 val startDestination = intent.getStringExtra("NAVIGATE_TO") ?: START_SCREEN
                 val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
                 val scope = rememberCoroutineScope()
-                
+
                 var selectedModel by remember { mutableStateOf<LlmModelConfig?>(null) }
                 var searchQuery by remember { mutableStateOf("") }
-                
-                val chatRepository = ChatRepository.getInstance()
-                val chatSessions by chatRepository.chatSessions.collectAsState()
-                
+
+                val chatRepository = ChatRepository.getInstance(this@MainActivity)
+                val chatSessions by chatRepository.chatSessions.collectAsState(initial = emptyList())
                 val currentBackStack by navController.currentBackStackEntryAsState()
                 val currentDestination = currentBackStack?.destination?.route ?: START_SCREEN
-                val isOnChatScreen = currentDestination.startsWith(CHAT_SCREEN) || 
+                val isOnChatScreen = currentDestination.startsWith(CHAT_SCREEN) ||
                                     currentDestination.startsWith("chat_screen/")
-                
+
                 // Filter sessions based on search query
                 val filteredSessions = remember(chatSessions, searchQuery) {
                     if (searchQuery.isBlank()) chatSessions
-                    else chatSessions.filter { 
-                        it.title.contains(searchQuery, ignoreCase = true) || 
+                    else chatSessions.filter {
+                        it.title.contains(searchQuery, ignoreCase = true) ||
                         it.getPreviewText().contains(searchQuery, ignoreCase = true)
                     }
                 }
@@ -91,7 +90,7 @@ class MainActivity : ComponentActivity() {
                                     Icon(Icons.Default.Add, contentDescription = "New Chat")
                                     Text("New Chat", modifier = Modifier.padding(start = 8.dp))
                                 }
-                                
+
                                 OutlinedTextField(
                                     value = searchQuery,
                                     onValueChange = { searchQuery = it },
@@ -100,13 +99,13 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                                     singleLine = true
                                 )
-                                
+
                                 Text(
                                     text = "Chat History",
                                     style = MaterialTheme.typography.titleMedium,
                                     modifier = Modifier.padding(vertical = 8.dp)
                                 )
-                                
+
                                 LazyColumn(
                                     modifier = Modifier.weight(1f)
                                 ) {
@@ -188,7 +187,7 @@ class MainActivity : ComponentActivity() {
                                     val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
                                     ChatRoute(chatId = chatId)
                                 }
-                                
+
                                 composable(CHAT_SCREEN) {
                                     // Fallback for the old route
                                     // Create a new chat session if needed
